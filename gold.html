@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Whale Shark</title>
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #000; }
+    canvas { display: block; }
+    a.back {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      padding: 0.5rem 1rem;
+      background: #00ccff;
+      color: #000;
+      text-decoration: none;
+      border-radius: 5px;
+      font-weight: bold;
+      z-index: 10;
+    }
+    a.back:hover { background: #0099cc; }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">Volver</a>
+  <canvas class="webgl"></canvas>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+    import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+
+    const canvas = document.querySelector('canvas.webgl');
+    const scene = new THREE.Scene();
+
+    // Luces
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+    hemiLight.position.set(0, 5, 0);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    dirLight.position.set(5, 10, 7.5);
+    scene.add(dirLight);
+
+    // Cámara
+    const sizes = { width: window.innerWidth, height: window.innerHeight };
+    const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100);
+    camera.position.set(0, 1.5, 8);
+    scene.add(camera);
+
+    // Controles
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setSize(sizes.width, sizes.height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x000000, 0);
+
+    // Postprocesado
+    const composer = new EffectComposer(renderer);
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(sizes.width, sizes.height),
+      0.6,  // fuerza del bloom
+      0.4,  // radio del halo
+      0.85  // umbral de brillo
+    );
+    composer.addPass(bloomPass);
+
+    // Resize
+    window.addEventListener('resize', () => {
+      sizes.width = window.innerWidth;
+      sizes.height = window.innerHeight;
+      camera.aspect = sizes.width / sizes.height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(sizes.width, sizes.height);
+      composer.setSize(sizes.width, sizes.height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    });
+
+    // Cargar modelos
+    const loader = new GLTFLoader();
+    let hydroModel, crystalModel, sceneModel;
+    const mixers = [];
+
+    // Hydrozoan-jelly
+    loader.load(
+      '/models/05/Hydrozoan-jelly.gltf',
+      (gltf) => {
+        hydroModel = gltf.scene;
+        hydroModel.scale.set(1,1,1);
+        hydroModel.position.set(-3, 7, -2.4);
+        hydroModel.traverse((child) => {
+          if (child.isMesh && child.material) {
+            child.material.transparent = true;
+            child.material.opacity = 0.6;
+            child.material.depthWrite = false;
+            child.material.side = THREE.DoubleSide;
+          }
+        });
+        scene.add(hydroModel);
+        if (gltf.animations.length > 0) {
+          const m = new THREE.AnimationMixer(hydroModel);
+          gltf.animations.forEach((clip) => m.clipAction(clip).play());
+          mixers.push(m);
+        }
+      },
+      undefined,
+      (error) => console.error('Error loading Hydrozoan-jelly:', error)
+    );
+
+    // Crystal-jelly
+    loader.load(
+      '/models/05/Crystal-jelly.gltf',
+      (gltf) => {
+        crystalModel = gltf.scene;
+        crystalModel.scale.set(0.8,0.8,0.8);
+        crystalModel.position.set(3, 0.8, 1);
+        crystalModel.traverse((child) => {
+          if (child.isMesh && child.material) {
+            child.material.transparent = true;
+            child.material.opacity = 0.5;
+            child.material.depthWrite = false;
+            child.material.side = THREE.DoubleSide;
+          }
+        });
+        scene.add(crystalModel);
+        if (gltf.animations.length > 0) {
+          const m = new THREE.AnimationMixer(crystalModel);
+          gltf.animations.forEach((clip) => m.clipAction(clip).play());
+          mixers.push(m);
+        }
+      },
+      undefined,
+      (error) => console.error('Error loading Crystal-jelly:', error)
+    );
+
+    // Scene model
+    loader.load(
+      '/models/06/scene.gltf',
+      (gltf) => {
+        sceneModel = gltf.scene;
+        sceneModel.scale.set(1,1,1);
+        sceneModel.position.set(0, 0, -2);
+        scene.add(sceneModel);
+      },
+      undefined,
+      (error) => console.error('Error loading scene.gltf:', error)
+    );
+
+    // Animación
+    const clock = new THREE.Clock();
+    function animate() {
+      const delta = clock.getDelta();
+      mixers.forEach((m) => m.update(delta));
+      const elapsed = clock.getElapsedTime();
+
+      // Movimiento de modelos
+      if (hydroModel) {
+        hydroModel.position.y = 1.2 + Math.sin(elapsed * 2) * 0.1;
+        hydroModel.rotation.y += 0.002;
+      }
+      if (crystalModel) {
+        crystalModel.position.y = 0.8 + Math.sin(elapsed * 1.5) * 0.08;
+        crystalModel.rotation.y -= 0.003;
+      }
+
+      // Rotación del sceneModel en todos los ejes
+      if (sceneModel) {
+        sceneModel.rotation.x += 0.001;
+        sceneModel.rotation.y += 0.0012;
+        sceneModel.rotation.z += 0.0008;
+      }
+
+      // Luces dinámicas
+      const hemiHue = (Math.sin(elapsed) * 0.5 + 0.5);
+      hemiLight.color.setHSL(hemiHue, 0.7, 0.5);
+      hemiLight.groundColor.setHSL(1-hemiHue, 0.5, 0.2);
+      hemiLight.intensity = 0.8 + Math.sin(elapsed*0.5)*0.4;
+
+      const dirHue = (Math.cos(elapsed*0.7)*0.5 + 0.5);
+      dirLight.color.setHSL(dirHue, 0.8, 0.6);
+      dirLight.intensity = 0.5 + Math.sin(elapsed*0.3)*0.5;
+
+      // Movimiento de cámara suave
+      camera.position.x = Math.sin(elapsed * 0.1) * 8;
+      camera.position.z = Math.cos(elapsed * 0.1) * 8;
+      camera.lookAt(0, 1, 0);
+
+      controls.update();
+      composer.render();
+      requestAnimationFrame(animate);
+    }
+    animate();
+  </script>
+</body>
+</html>

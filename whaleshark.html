@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Underwater Scene - Fish</title>
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #000; }
+    canvas { display: block; }
+    a.back {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      padding: 0.5rem 1rem;
+      background: #00ccff;
+      color: #000;
+      text-decoration: none;
+      border-radius: 5px;
+      font-weight: bold;
+      z-index: 10;
+    }
+    a.back:hover { background: #0099cc; }
+  </style>
+</head>
+<body>
+<a class="back" href="index.html">Volver</a>
+<canvas class="webgl"></canvas>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+
+// --- Scene and Renderer ---
+const canvas = document.querySelector('canvas.webgl');
+const scene = new THREE.Scene();
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+// --- Camera ---
+const camera = new THREE.PerspectiveCamera(30, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.set(0, 4, 9);
+scene.add(camera);
+
+// --- OrbitControls deshabilitados para que la cámara no se mueva ---
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = false;
+controls.enableRotate = false;
+controls.enablePan = false;
+controls.enableZoom = false;
+
+// --- Lights ---
+const ambientLight = new THREE.AmbientLight(0xffff, 0.5);
+scene.add(ambientLight);
+
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+directionalLight.position.set(5, 5, 5);
+scene.add(directionalLight);
+
+// --- Bloom ---
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.2, 0.3, 0.85);
+composer.addPass(bloomPass);
+
+// --- GLTF Loader ---
+const loader = new GLTFLoader();
+
+// --- Cargar fondo desde models/10/ ---
+let fondo; // referencia global para animarlo
+loader.load(
+    'models/10/scene.gltf',
+    gltf => {
+        fondo = gltf.scene;
+        fondo.scale.set(1.8, 1.8, 1.8);   // ajusta según tu modelo
+        fondo.position.set(2, -2, 1);      // centrado detrás de los peces
+        scene.add(fondo);
+        console.log('Fondo cargado correctamente desde models/10/');
+    },
+    undefined,
+    err => console.error('Error cargando fondo:', err)
+);
+
+// --- Bend Shader ---
+function applyBendShader(mesh){
+    mesh.traverse(child=>{
+        if(child.isMesh && child.material.isMeshStandardMaterial){
+            child.material.onBeforeCompile = shader=>{
+                shader.uniforms.time = { value: 0 };
+                shader.vertexShader = `uniform float time;\n` + shader.vertexShader;
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <begin_vertex>',
+                    `#include <begin_vertex>
+                     float bend = sin(position.z*3.0 + time*2.0)*0.30;
+                     transformed.x += bend;
+                     transformed.y += sin(position.x*3.0 + time*1.0)*0.01;`
+                );
+                child.userData.shader = shader;
+            };
+            child.material.needsUpdate = true;
+        }
+    });
+}
+
+// --- Crear peces ---
+const peces = [];
+const fishConfigs = [
+    { path:'/models/09/Salmon.gltf', scale:0.12 },
+    { path:'/models/09/Salmon.gltf', scale:0.12 },
+    { path:'/models/04/Gold.gltf', scale:0.20 },
+    { path:'/models/11/Koi.gltf', scale:0.1 },
+    { path:'/models/11/Koi.gltf', scale:0.04 },
+    { path:'/models/11/Trout.gltf', scale:0.1 },
+    { path:'/models/11/Trout.gltf', scale:2 },
+];
+fishConfigs.forEach(cfg=>{
+    loader.load(cfg.path, gltf=>{
+        const fish = gltf.scene;
+        fish.scale.set(cfg.scale, cfg.scale, cfg.scale);
+        scene.add(fish);
+        applyBendShader(fish);
+
+        peces.push({
+            mesh: fish,
+            baseX: (Math.random()-0.5)*3,
+            baseY: (Math.random()*1)+0.5,
+            baseZ: (Math.random()-0.5)*1,
+            speedX: 0.2 + Math.random()*0.15,
+            speedY: 0.1 + Math.random()*0.1,
+            speedZ: 0.005 + Math.random()*0.01,
+            phaseX: Math.random()*Math.PI*2,
+            phaseY: Math.random()*Math.PI*2,
+            phaseZ: Math.random()*Math.PI*2
+        });
+    });
+});
+
+// --- Animate ---
+const clock = new THREE.Clock();
+
+function animate(){
+    const elapsed = clock.getElapsedTime();
+
+    // Animar peces
+    peces.forEach(f=>{
+        f.mesh.position.x = f.baseX + Math.sin(elapsed*f.speedX + f.phaseX)*0.5;
+        f.mesh.position.y = f.baseY + Math.sin(elapsed*f.speedY + f.phaseY)*0.2;
+        f.mesh.position.z = f.baseZ + Math.sin(elapsed*f.speedZ + f.phaseZ)*0.1;
+
+        const dir = new THREE.Vector3(
+            Math.cos(elapsed*f.speedX + f.phaseX),
+            Math.sin(elapsed*f.speedY + f.phaseY)*0.2,
+            Math.sin(elapsed*f.speedZ + f.phaseZ)
+        );
+        f.mesh.lookAt(f.mesh.position.clone().add(dir));
+
+        f.mesh.traverse(c=>{ if(c.userData.shader) c.userData.shader.uniforms.time.value = elapsed; });
+    });
+
+    // Animar fondo flotando arriba y abajo
+    if(fondo){
+        fondo.position.y = Math.sin(elapsed*0.5)*0.3; // amplitud y velocidad ajustables
+    }
+
+    composer.render();
+    requestAnimationFrame(animate);
+}
+
+animate();
+
+// --- Resize ---
+window.addEventListener('resize', ()=>{
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
