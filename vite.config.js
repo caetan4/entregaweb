@@ -6,16 +6,16 @@ export default {
   },
 
   build: {
-    outDir: 'dist',   // NO uses ../dist porque rompe rutas
+    outDir: 'dist',
     emptyOutDir: true,
     sourcemap: true,
 
     rollupOptions: {
       input: {
         main: 'index.html',
-        page2: 'gold.html',
-        page3: 'whale.html',
-        page4: 'anchoby.html'
+        gold: 'gold.html',
+        whale: 'whaleshark.html',
+        anchoby: 'anchoby.html'
       }
     }
   },
